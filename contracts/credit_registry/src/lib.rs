@@ -4,9 +4,12 @@ use soroban_sdk::{contract, contractimpl, Env, Address, String, BytesN};
 pub mod types;
 pub mod errors;
 pub mod storage;
+pub mod events;
 
 use crate::errors::CarbonChainError;
-use crate::storage::{set_admin, has_admin};
+use crate::storage::{set_admin, has_admin, set_credit};
+use crate::types::{CreditMetadata, CreditStatus};
+use crate::events::credit_submitted;
 
 #[contract]
 pub struct CreditRegistry;
@@ -21,8 +24,25 @@ impl CreditRegistry {
         Ok(())
     }
 
-    pub fn submit_credit(env: Env, _issuer: Address, _project_id: String, _tonnes: i128) -> BytesN<32> {
-        // TODO: Implementation
-        BytesN::from_array(&env, &[0u8; 32])
+    pub fn submit_credit(env: Env, issuer: Address, project_id: String, vintage_year: u32, methodology: String, geography: String, tonnes: i128, ipfs_hash: String) -> Result<BytesN<32>, CarbonChainError> {
+        issuer.require_auth();
+
+        let id = env.crypto().sha256(&project_id.to_xdr(&env));
+        let metadata = CreditMetadata {
+            project_id: project_id.clone(),
+            issuer: issuer.clone(),
+            vintage_year,
+            methodology,
+            geography,
+            tonnes,
+            ipfs_hash,
+            status: CreditStatus::Pending,
+            issued_at: env.ledger().timestamp(),
+        };
+
+        set_credit(&env, &id, &metadata);
+        credit_submitted(&env, issuer, project_id, tonnes);
+
+        Ok(id)
     }
 }
