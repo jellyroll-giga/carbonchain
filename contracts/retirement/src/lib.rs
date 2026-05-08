@@ -1,3 +1,4 @@
+#![no_std]
 pub mod types;
 
 use crate::types::RetirementRecord;
