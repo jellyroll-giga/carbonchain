@@ -1,8 +1,19 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StellarService } from '../stellar/stellar.service';
+import { StellarKeypairService } from '../stellar/stellar-keypair.service';
 import { xdr, scValToNative, nativeToScVal } from '@stellar/stellar-sdk';
 import { CreditMetadata, CreditStatus } from '../../../shared';
+
+export class IssueCreditDto {
+  issuerPublicKey: string;
+  projectId: string;
+  vintageYear: number;
+  methodology: string;
+  geography: string;
+  tonnes: string;   // i128 as string
+  ipfsHash: string;
+}
 
 @Injectable()
 export class CreditsService {
@@ -12,8 +23,30 @@ export class CreditsService {
   constructor(
     private stellarService: StellarService,
     private configService: ConfigService,
+    private keypairService: StellarKeypairService,
   ) {
     this.contractId = this.configService.get<string>('CREDIT_REGISTRY_CONTRACT_ID') || '';
+  }
+
+  async issueCredit(dto: IssueCreditDto): Promise<{ creditId: string }> {
+    this.logger.log(`Issuing credit for project ${dto.projectId}`);
+    const args = [
+      nativeToScVal(dto.issuerPublicKey, { type: 'address' }),
+      nativeToScVal(dto.projectId, { type: 'string' }),
+      nativeToScVal(dto.vintageYear, { type: 'u32' }),
+      nativeToScVal(dto.methodology, { type: 'string' }),
+      nativeToScVal(dto.geography, { type: 'string' }),
+      nativeToScVal(BigInt(dto.tonnes), { type: 'i128' }),
+      nativeToScVal(dto.ipfsHash, { type: 'string' }),
+    ];
+    const signer = this.keypairService.getAdminKeypair();
+    const response = await this.stellarService.invokeContract(
+      this.contractId, 'submit_credit', args, signer,
+    );
+    const creditId = (response as any).returnValue
+      ? Buffer.from(scValToNative((response as any).returnValue) as Uint8Array).toString('hex')
+      : 'unknown';
+    return { creditId };
   }
 
   async getCredit(creditId: string): Promise<CreditMetadata> {

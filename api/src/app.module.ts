@@ -8,6 +8,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { AuthModule } from './auth/auth.module';
 import { VerifiersModule } from './verifiers/verifiers.module';
 import { RetirementModule } from './retirement/retirement.module';
+import { MarketplaceModule } from './marketplace/marketplace.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RetirementModule } from './retirement/retirement.module';
     AuthModule,
     VerifiersModule,
     RetirementModule,
+    MarketplaceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

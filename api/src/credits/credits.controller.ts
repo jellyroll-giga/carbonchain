@@ -1,10 +1,15 @@
-import { Controller, Get, Param } from '@nestjs/common';
-import { CreditsService } from './credits.service';
+import { Controller, Get, Post, Param, Body } from '@nestjs/common';
+import { CreditsService, IssueCreditDto } from './credits.service';
 import { CreditMetadata } from '../../../shared';
 
 @Controller('credits')
 export class CreditsController {
   constructor(private readonly creditsService: CreditsService) {}
+
+  @Post('issue')
+  issueCredit(@Body() dto: IssueCreditDto): Promise<{ creditId: string }> {
+    return this.creditsService.issueCredit(dto);
+  }
 
   @Get(':id')
   async getCredit(@Param('id') id: string): Promise<CreditMetadata> {
