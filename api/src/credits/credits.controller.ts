@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Param, Body } from '@nestjs/common';
 import { CreditsService, IssueCreditDto } from './credits.service';
-import { CreditMetadata } from '../../../shared';
+import { CreditMetadata } from '../shared';
 
 @Controller('credits')
 export class CreditsController {

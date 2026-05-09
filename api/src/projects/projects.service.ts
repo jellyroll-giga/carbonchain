@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ProjectProfile } from '../../../shared';
+import { ProjectProfile } from '../shared';
 
 @Injectable()
 export class ProjectsService {

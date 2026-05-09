@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { ProjectsService } from './projects.service';
-import { ProjectProfile } from '../../../shared';
+import { ProjectProfile } from '../shared';
 
 @Controller('projects')
 export class ProjectsController {

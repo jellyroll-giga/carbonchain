@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Delete, Param, Body, ParseIntPipe } from '@nestjs/common';
 import { MarketplaceService, CreateOfferDto } from './marketplace.service';
-import { Offer } from '../../../shared';
+import { Offer } from '../shared';
 
 @Controller('marketplace')
 export class MarketplaceController {

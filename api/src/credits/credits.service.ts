@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { StellarService } from '../stellar/stellar.service';
 import { StellarKeypairService } from '../stellar/stellar-keypair.service';
 import { xdr, scValToNative, nativeToScVal } from '@stellar/stellar-sdk';
-import { CreditMetadata, CreditStatus } from '../../../shared';
+import { CreditMetadata, CreditStatus } from '../shared';
 
 export class IssueCreditDto {
   issuerPublicKey: string;
