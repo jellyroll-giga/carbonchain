@@ -335,6 +335,22 @@ mod tests {
     }
 
     #[test]
+    fn test_negative_price_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, seller, _admin, registry_id, credit_id) = setup_with_registry(&env);
+        assert!(client.try_create_offer(&seller, &credit_id, &-1, &500_000, &registry_id).is_err());
+    }
+
+    #[test]
+    fn test_zero_tonnes_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, seller, _admin, registry_id, credit_id) = setup_with_registry(&env);
+        assert!(client.try_create_offer(&seller, &credit_id, &10_000_000, &0, &registry_id).is_err());
+    }
+
+    #[test]
     fn test_get_offers_by_seller() {
         let env = Env::default();
         env.mock_all_auths();

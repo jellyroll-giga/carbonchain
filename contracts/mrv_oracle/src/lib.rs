@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
     contract, contractimpl, contracttype, contracterror, symbol_short,
-    Env, Address, String, Vec,
+    Env, Address, String, Vec, Symbol, IntoVal,
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -121,6 +121,7 @@ impl MrvOracle {
         oracle: Address,
         project_id: String,
         tonnes: i128,
+        registry_id: Address,
         nonce: u64,
     ) -> Result<bool, OracleError> {
         if Self::is_paused(&env) {
@@ -132,6 +133,16 @@ impl MrvOracle {
         }
         if !Self::consume_nonce(&env, &oracle, nonce) {
             return Err(OracleError::InvalidNonce);
+        }
+
+        // Validate project exists in registry
+        let credits: soroban_sdk::Vec<soroban_sdk::BytesN<32>> = env.invoke_contract(
+            &registry_id,
+            &soroban_sdk::Symbol::new(&env, "list_credits_by_project"),
+            (project_id.clone(),).into_val(&env),
+        );
+        if credits.is_empty() {
+            return Err(OracleError::InvalidProject);
         }
 
         let anomaly = Self::detect_anomaly(&env, &project_id, tonnes)?;
@@ -297,17 +308,42 @@ mod tests {
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Env, String};
 
-    fn setup() -> (Env, MrvOracleClient<'static>, Address, Address) {
+    fn setup() -> (Env, MrvOracleClient<'static>, Address, Address, Address) {
         let env = Env::default();
         env.mock_all_auths();
+        
+        // Setup credit registry
+        let registry_id = env.register(carbonchain_credit_registry::CreditRegistry, ());
+        let registry_client = carbonchain_credit_registry::CreditRegistryClient::new(&env, &registry_id);
+        let admin = Address::generate(&env);
+        let verifier = Address::generate(&env);
+        let retirement = Address::generate(&env);
+        registry_client.initialize(&admin, &retirement);
+        let nonce = registry_client.get_nonce(&admin);
+        registry_client.register_verifier(&admin, &verifier, &nonce);
+        
+        // Create a test credit
+        let issuer = Address::generate(&env);
+        let inonce = registry_client.get_nonce(&issuer);
+        registry_client.submit_credit(
+            &issuer,
+            &String::from_str(&env, "PROJ-001"),
+            &2024,
+            &String::from_str(&env, "VCS"),
+            &String::from_str(&env, "NG"),
+            &1_000_000,
+            &String::from_str(&env, "bafybei123"),
+            &inonce,
+        );
+        
+        // Setup MRV oracle
         let id = env.register(MrvOracle, ());
         let client = MrvOracleClient::new(&env, &id);
-        let admin = Address::generate(&env);
         let oracle = Address::generate(&env);
         client.initialize(&admin);
-        let nonce = client.get_nonce(&admin);
-        client.register_oracle(&admin, &oracle, &nonce);
-        (env, client, admin, oracle)
+        let ononce = client.get_nonce(&admin);
+        client.register_oracle(&admin, &oracle, &ononce);
+        (env, client, oracle, registry_id, admin)
     }
 
     #[test]
@@ -330,7 +366,7 @@ mod tests {
 
     #[test]
     fn test_update_and_get_latest() {
-        let (env, client, _admin, oracle) = setup();
+        let (env, client, oracle, registry_id, _admin) = setup();
         let proj = String::from_str(&env, "PROJ-001");
         let nonce = client.get_nonce(&oracle);
         client.update_mrv_data(&oracle, &proj, &1_000_000, &nonce);
@@ -341,54 +377,62 @@ mod tests {
 
     #[test]
     fn test_history_accumulates() {
-        let (env, client, _admin, oracle) = setup();
+        let (env, client, oracle, registry_id, _admin) = setup();
         let proj = String::from_str(&env, "PROJ-001");
         let nonce = client.get_nonce(&oracle);
-        client.update_mrv_data(&oracle, &proj, &1_000_000, &nonce);
+        client.update_mrv_data(&oracle, &proj, &1_000_000, &registry_id, &nonce);
         let nonce2 = client.get_nonce(&oracle);
-        client.update_mrv_data(&oracle, &proj, &1_050_000, &nonce2);
+        client.update_mrv_data(&oracle, &proj, &1_050_000, &registry_id, &nonce2);
         assert_eq!(client.get_history(&proj).len(), 2);
     }
 
     #[test]
     fn test_anomaly_flagged_on_large_deviation() {
-        let (env, client, _admin, oracle) = setup();
+        let (env, client, oracle, registry_id, _admin) = setup();
         let proj = String::from_str(&env, "PROJ-001");
         let nonce = client.get_nonce(&oracle);
-        client.update_mrv_data(&oracle, &proj, &1_000_000, &nonce);
+        client.update_mrv_data(&oracle, &proj, &1_000_000, &registry_id, &nonce);
         let nonce2 = client.get_nonce(&oracle);
-        let anomaly = client.update_mrv_data(&oracle, &proj, &1_500_000, &nonce2);
+        let anomaly = client.update_mrv_data(&oracle, &proj, &1_500_000, &registry_id, &nonce2);
         assert!(anomaly);
         assert!(client.get_latest(&proj).unwrap().unwrap().anomaly);
     }
 
     #[test]
     fn test_no_anomaly_on_small_deviation() {
-        let (env, client, _admin, oracle) = setup();
+        let (env, client, oracle, registry_id, _admin) = setup();
         let proj = String::from_str(&env, "PROJ-001");
         let nonce = client.get_nonce(&oracle);
-        client.update_mrv_data(&oracle, &proj, &1_000_000, &nonce);
+        client.update_mrv_data(&oracle, &proj, &1_000_000, &registry_id, &nonce);
         let nonce2 = client.get_nonce(&oracle);
-        let anomaly = client.update_mrv_data(&oracle, &proj, &1_100_000, &nonce2);
+        let anomaly = client.update_mrv_data(&oracle, &proj, &1_100_000, &registry_id, &nonce2);
         assert!(!anomaly);
     }
 
     #[test]
     fn test_unauthorized_oracle_rejected() {
-        let (env, client, _admin, _oracle) = setup();
+        let (env, client, _oracle, registry_id, _admin) = setup();
         let proj = String::from_str(&env, "PROJ-001");
         let rogue = Address::generate(&env);
         let nonce = client.get_nonce(&rogue);
-        assert!(client.try_update_mrv_data(&rogue, &proj, &1_000_000, &nonce).is_err());
+        assert!(client.try_update_mrv_data(&rogue, &proj, &1_000_000, &registry_id, &nonce).is_err());
+    }
+
+    #[test]
+    fn test_unregistered_project_rejected() {
+        let (env, client, oracle, registry_id, _admin) = setup();
+        let proj = String::from_str(&env, "PROJ-NONEXISTENT");
+        let nonce = client.get_nonce(&oracle);
+        assert!(client.try_update_mrv_data(&oracle, &proj, &1_000_000, &registry_id, &nonce).is_err());
     }
 
     #[test]
     fn test_history_cap_evicts_oldest() {
-        let (env, client, _admin, oracle) = setup();
+        let (env, client, oracle, registry_id, _admin) = setup();
         let proj = String::from_str(&env, "PROJ-CAP");
         for i in 0..=MAX_HISTORY {
             let nonce = client.get_nonce(&oracle);
-            client.update_mrv_data(&oracle, &proj, &(i as i128 * 1_000), &nonce);
+            client.update_mrv_data(&oracle, &proj, &(i as i128 * 1_000), &registry_id, &nonce);
         }
         let history = client.get_history(&proj);
         assert_eq!(history.len(), MAX_HISTORY);
@@ -450,27 +494,28 @@ mod tests {
     // ── Pause tests ──────────────────────────────────────────────────────────
 
     #[test]
+    #[test]
     fn test_pause_blocks_update_mrv_data() {
-        let (env, client, admin, oracle) = setup();
+        let (env, client, oracle, registry_id, admin) = setup();
         client.pause(&admin);
         assert!(client.paused());
         let proj = String::from_str(&env, "PROJ-001");
-        assert!(client.try_update_mrv_data(&oracle, &proj, &1_000_000).is_err());
+        assert!(client.try_update_mrv_data(&oracle, &proj, &1_000_000, &registry_id).is_err());
     }
 
     #[test]
     fn test_unpause_restores_update_mrv_data() {
-        let (env, client, admin, oracle) = setup();
+        let (env, client, oracle, registry_id, admin) = setup();
         client.pause(&admin);
         client.unpause(&admin);
         assert!(!client.paused());
         let proj = String::from_str(&env, "PROJ-001");
-        assert!(client.try_update_mrv_data(&oracle, &proj, &1_000_000).is_ok());
+        assert!(client.try_update_mrv_data(&oracle, &proj, &1_000_000, &registry_id).is_ok());
     }
 
     #[test]
     fn test_non_admin_cannot_pause() {
-        let (env, client, _, _) = setup();
+        let (env, client, _, _, _) = setup();
         let rando = Address::generate(&env);
         assert!(client.try_pause(&rando).is_err());
     }
