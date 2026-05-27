@@ -7,6 +7,8 @@ pub enum CreditStatus {
     Active = 1,
     Retired = 2,
     Flagged = 3,
+    Disputed = 4,
+    Expired = 5,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23,6 +25,23 @@ pub struct CreditMetadata {
     pub issued_at: u64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct ProjectMetadata {
+    pub owner: Address,
+    pub name: String,
+    pub description: String,
+    pub location: String,
+    pub created_at: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[contracttype]
+pub enum DisputeOutcome {
+    Approved = 0,
+    Rejected = 1,
+}
+
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
@@ -30,7 +49,11 @@ pub enum DataKey {
     VerifierSet,
     Credit(BytesN<32>),
     ProjectCredits(String),
+    Project(String),
     RetirementContract,
     CreditNonce,
     Paused,
+    PendingAdmin,
+    Nonce(Address),
+    Dispute(BytesN<32>),
 }

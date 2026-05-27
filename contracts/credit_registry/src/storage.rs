@@ -1,5 +1,5 @@
 use soroban_sdk::{Env, Address, BytesN, Vec, String};
-use crate::types::{DataKey, CreditMetadata};
+use crate::types::{DataKey, CreditMetadata, ProjectMetadata};
 
 /// Minimum TTL in ledgers (~1 year at 5s/ledger).
 pub const MIN_TTL: u32 = 6_307_200;
@@ -28,6 +28,16 @@ pub fn get_credit(env: &Env, id: &BytesN<32>) -> Option<CreditMetadata> {
     env.storage().persistent().get(&DataKey::Credit(id.clone()))
 }
 
+pub fn set_project(env: &Env, project_id: &String, metadata: &ProjectMetadata) {
+    let key = DataKey::Project(project_id.clone());
+    env.storage().persistent().set(&key, metadata);
+    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, MIN_TTL);
+}
+
+pub fn get_project(env: &Env, project_id: &String) -> Option<ProjectMetadata> {
+    env.storage().persistent().get(&DataKey::Project(project_id.clone()))
+}
+
 pub fn get_verifiers(env: &Env) -> Vec<Address> {
     env.storage()
         .instance()
@@ -37,7 +47,7 @@ pub fn get_verifiers(env: &Env) -> Vec<Address> {
 
 pub fn set_verifiers(env: &Env, verifiers: &Vec<Address>) {
     env.storage().instance().set(&DataKey::VerifierSet, verifiers);
-    env.storage().instance().extend_ttl(TTL_THRESHOLD, MIN_TTL);
+    env.storage().instance().extend_ttl(&DataKey::VerifierSet, TTL_THRESHOLD, MIN_TTL);
 }
 
 pub fn is_verifier(env: &Env, verifier: &Address) -> bool {
@@ -74,4 +84,21 @@ pub fn set_paused(env: &Env, paused: bool) {
 
 pub fn is_paused(env: &Env) -> bool {
     env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
+}
+
+pub fn set_nonce(env: &Env, address: &Address, nonce: u64) {
+    env.storage().instance().set(&DataKey::Nonce(address.clone()), &nonce);
+}
+
+pub fn get_nonce(env: &Env, address: &Address) -> u64 {
+    env.storage().instance().get(&DataKey::Nonce(address.clone())).unwrap_or(0u64)
+}
+
+pub fn consume_nonce(env: &Env, address: &Address, nonce: u64) -> bool {
+    let current = get_nonce(env, address);
+    if current != nonce {
+        return false;
+    }
+    set_nonce(env, address, nonce + 1);
+    true
 }
